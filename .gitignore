@@ -1,0 +1,8 @@
+*.pyc
+*.swp
+
+*.jpg
+*.png
+
+frames/
+cc/
