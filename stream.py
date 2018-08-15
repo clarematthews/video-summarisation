@@ -15,7 +15,8 @@ import summarise
 from multiprocessing.pool import ThreadPool
 
 BASE = 'http://10.5.5.9'
-URL = '{}:8080/live/amba.m3u8'.format(BASE)
+URL = '{}/gp/gpControl'.format(BASE)
+STREAM_ADDR = 'udp://10.5.5.100'
 UDP_IP = '10.5.5.9'
 UDP_PORT = 8554
 KEEP_ALIVE_PERIOD = 2500
@@ -29,30 +30,30 @@ def get_command_msg(id):
 
 def gopro_live():
     message = get_command_msg(KEEP_ALIVE_CMD)
-    try:
-        response_raw = urlopen('{}/gp/gpControl'.format(BASE)).read().decode('utf-8')
-        jsondata = json.loads(response_raw)
-        response = jsondata['info']['firmware_version']
-    except http.client.BadStatusLine:
-        response = urlopen('{}/camera/cv'.format(BASE)).read().decode('utf-8')
-    print(response)
-    print(jsondata['info']['model_name']+'\n'+jsondata['info']['firmware_version'])
+    response_raw = urlopen(URL).read().decode('utf-8')
+    jsondata = json.loads(response_raw)
+    print(jsondata['info']['model_name'])
+    print(jsondata['info']['firmware_version'])
+
     ##
 	## HTTP GETs the URL that tells the GoPro to start streaming.
 	##
-    urlopen('{}/gp/gpControl/execute?p1=gpStream&a1=proto_v2&c1=restart'.format(BASE)).read()
-    print('UDP target IP:', UDP_IP)
-    print('UDP target port:', UDP_PORT)
-    print('message:', message)
+    urlopen('{}/execute?p1=gpStream&a1=proto_v2&c1=restart'.format(URL)).read()
+    print('UDP target IP: {}'.format(UDP_IP))
+    print('UDP target port: {}'.format(UDP_PORT))
+    print('message: {}'.format(message))
 
     print('Recording stored in: ' + FRAMES)
     template = '{}img{{:06d}}.png'.format(FRAMES)
     fname = '{}img%06d.png'.format(FRAMES)
-    ffmpegstr = 'ffmpeg -loglevel panic -y -i "udp://10.5.5.100:8554?fifo_size=1000000&overrun_nonfatal=1&buffer_size=128000" -vf fps=10 {}'.format(fname)
+    ffmpegstr = 'ffmpeg -loglevel panic -y -i '\
+            '"{}:{}?fifo_size=1000000&overrun_nonfatal=1&buffer_size=128000"'\
+            ' -vf fps=10 {}'.format(STREAM_ADDR, UDP_PORT, fname)
     subprocess.Popen(ffmpegstr, shell=True)
     if sys.version_info.major >= 3:
         message = bytes(message, 'utf-8')
     print('Press ctrl+C to quit this application.\n')
+
     pool = ThreadPool(processes=1)
     keyframes = pool.apply_async(summarise.run, (FRAMES, template))
     try:
@@ -67,11 +68,11 @@ def gopro_live():
 
 
 def quit_gopro():
-    urlopen('{}/gp/gpControl/execute?p1=gpStream&a1=proto_v2&c1=stop'.format(BASE)).read()
+    urlopen('{}/execute?p1=gpStream&a1=proto_v2&c1=stop'.format(URL)).read()
 
 
 if __name__ == '__main__':
-    subprocess.Popen('rm {}img*.jpg'.format(FRAMES), shell=True)
-    subprocess.Popen('rm {}img*.png'.format(FRAMES), shell=True)
+    subprocess.Popen('rm -f {}img*.jpg'.format(FRAMES), shell=True)
+    subprocess.Popen('rm -f {}img*.png'.format(FRAMES), shell=True)
     keyframes = gopro_live()
     print(keyframes)

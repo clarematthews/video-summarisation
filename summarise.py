@@ -31,7 +31,8 @@ def process(filename):
 
 def select_keyframe(features):
     mu = features.mean(0)
-    dists = np.apply_along_axis(lambda f: np.linalg.norm(f - mu), axis=1, arr=features)
+    dists = np.apply_along_axis(lambda f: np.linalg.norm(f - mu), axis=1,
+            arr=features)
     return np.argmin(dists)
 
 

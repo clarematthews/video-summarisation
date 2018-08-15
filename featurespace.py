@@ -4,7 +4,8 @@ def rgb_moments(image):
     channels = 3
     blocks = 3
     imsize = image.shape 
-    image = image[np.mod(imsize[0], blocks):imsize[0], np.mod(imsize[1], blocks):imsize[1], :]
+    image = image[np.mod(imsize[0], blocks):imsize[0],
+            np.mod(imsize[1], blocks):imsize[1], :]
     nrows = imsize[0]//blocks
     ncols = imsize[1]//blocks
     rgbblocks = image.reshape(blocks, nrows, blocks, ncols, channels)
