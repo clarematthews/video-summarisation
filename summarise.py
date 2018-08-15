@@ -4,11 +4,12 @@ import cv2
 import featurespace as fs
 import numpy as np
 import threading
+import contextlib
 
 BUFFER = 20
 MINSHOT = 5
 THRESH = 0.6
-WAIT = 10
+WAIT = 3
 
 def nextframe(template, framenum):
     filename = template.format(framenum)
@@ -54,7 +55,8 @@ def framediff(frame1, frame2):
 def cleanup(files, template):
     for filenum in files:
         fname = template.format(filenum)
-        os.remove(fname)
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(fname)
 
 
 def run(path, fnames):
@@ -139,6 +141,7 @@ def run(path, fnames):
         previm = cv2.imread(filename, 1)
         diff = framediff(currim, previm)
         if diff < THRESH:
+            print('Removing KF: {}'.format(kfs[-1]))
             kfs.pop()
             previdx.extend(frameidx)
             frameidx = previdx
