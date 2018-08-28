@@ -1,0 +1,56 @@
+.app {
+  padding: 24px;
+}
+
+.wrapper {
+  display: grid;
+  grid-gap: 0px;
+  grid-template-columns: repeat(auto-fill, 150px);
+  color: #444;
+  margin: -8px;
+  margin-top: 16px;
+}
+
+.image {
+  border: 8px solid rgba(255, 0, 0, 0);
+  opacity: 0.65;
+}
+
+.keyframe {
+  border-color: rgba(255, 0, 0, 1);
+  opacity: 1;
+  transition: transform 0.2s;
+}
+
+.keyframe:hover {
+  transform: scale(2);
+  z-index: 100;
+  box-shadow: 0 8px 6px -6px black;
+}
+
+.image img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.spinner {
+  height: 100px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.button {
+  background-color: white;
+  padding: 10px;
+  margin-right: 16px;
+  font-size: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 2px solid grey;
+}
+
+.button:hover {
+  background-color: #ddd;
+}

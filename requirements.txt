@@ -1,1 +1,10 @@
-opencv-python
+click==6.7
+Flask==1.0.2
+itsdangerous==0.24
+Jinja2==2.10
+MarkupSafe==1.0
+marshmallow==2.15.4
+numpy==1.15.0
+redis==2.10.6
+rq==0.12.0
+Werkzeug==0.14.1

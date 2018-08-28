@@ -1,8 +1,10 @@
 *.pyc
 *.swp
+*.rdb
 
 *.jpg
 *.png
 
 frames/
+static/
 cc/

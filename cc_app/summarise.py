@@ -5,11 +5,17 @@ import featurespace as fs
 import numpy as np
 import threading
 import contextlib
+from rq import get_current_job
 
 BUFFER = 20
 MINSHOT = 5
 THRESH = 0.6
-WAIT = 3
+WAIT = 2
+
+
+def framename(num):
+    return 'img{:06d}.png'.format(num)
+
 
 def nextframe(template, framenum):
     filename = template.format(framenum)
@@ -53,43 +59,46 @@ def framediff(frame1, frame2):
     return sum(abs(hist1 - hist2))
 
 
-def cleanup(files, template):
-    for filenum in files:
-        fname = template.format(filenum)
-        with contextlib.suppress(FileNotFoundError):
-            os.remove(fname)
-
 
 def run(path, fnames):
+    job = get_current_job()
     while not os.listdir(path):
         print('Waiting for stream...')
         time.sleep(5)
     
-    framenum = 1
+    print('Running algorithm')
+    frames = []
+    fstframe = os.listdir(path)
+    fstframe = fstframe[0]
+    fstframe = int(float(fstframe[3:9]))
+    framenum = fstframe
     distcount = 0
     kfs = []
-    oldframes = []
-    previdx = []
+    prevframes = []
     nextfile = nextframe(fnames, framenum)
     sumdist = 0
     sumsq = 0
     while nextfile:
+        print(framenum)
+        frames.append({'file': framename(framenum), 'keyframe': False})
+        job.meta['frames'] = frames
+        job.save_meta()
         currfeatures = process(nextfile)
-        if framenum == 1:
+        if framenum == fstframe:
             shot = currfeatures
-            frameidx = [framenum] 
+            eventframes = [nextfile,] 
             prevfeatures = currfeatures
             framenum += 1
             nextfile = nextframe(fnames, framenum)
             continue
 
         dist = np.linalg.norm(currfeatures - prevfeatures)
-        if framenum < BUFFER:
+        if framenum - fstframe < BUFFER:
             sumdist += dist
             sumsq += dist**2
             distcount += 1
             shot = np.append(shot, currfeatures, axis=0)
-            frameidx.append(framenum)
+            eventframes.append(framenum)
             prevfeatures = currfeatures
             framenum += 1
             nextfile = nextframe(fnames, framenum)
@@ -102,7 +111,7 @@ def run(path, fnames):
             sumsq += dist**2
             distcount += 1
             shot = np.append(shot, currfeatures, axis=0)
-            frameidx.append(framenum)
+            eventframes.append(framenum)
             prevfeatures = currfeatures
             framenum += 1
             nextfile = nextframe(fnames, framenum)
@@ -110,84 +119,96 @@ def run(path, fnames):
 
         if shot.shape[0] < MINSHOT:
             shot = currfeatures
-            oldframes = frameidx
-            frameidx = [framenum]
+            eventframes = [framenum,]
             prevfeatures = currfeatures
             framenum += 1
             nextfile = nextframe(fnames, framenum)
-            oldframes = [f for f in oldframes if f not in kfs]
-            cleaner = threading.Thread(target=cleanup, args=(oldframes, fnames))
-            cleaner.start()
             continue
 
         idx = select_keyframe(shot)
-        currkf = frameidx[idx]
+        currkf = eventframes[idx]
         if len(kfs) == 0:
             kfs.append(currkf)
+            try:
+                imfile = framename(currkf)
+                idx = frames.index({'file': imfile, 'keyframe': False})
+                frames[idx] = {'file': imfile, 'keyframe': True}
+            except ValueError:
+                pass
             print('Added first KF: {}'.format(currkf))
             prevshot = shot
-            previdx = frameidx
+            prevframes = eventframes
             shot = currfeatures
-            frameidx = [framenum]
+            eventframes = [framenum,]
             prevfeatures = currfeatures
             framenum += 1
             nextfile = nextframe(fnames, framenum)
             continue
 
-        oldframes = previdx
         prevkf = kfs[-1]
-        filename = fnames.format(currkf)
-        currim = cv2.imread(filename, 1)
-        filename = fnames.format(prevkf)
-        previm = cv2.imread(filename, 1)
+        currim = cv2.imread(fnames.format(currkf), 1)
+        previm = cv2.imread(fnames.format(prevkf), 1)
         diff = framediff(currim, previm)
         if diff < THRESH:
             print('Removing KF: {}'.format(kfs[-1]))
             kfs.pop()
-            previdx.extend(frameidx)
-            frameidx = previdx
+            try:
+                imfile = framename(prevkf)
+                idx = frames.index({'file': imfile, 'keyframe': True})
+                frames[idx] = {'file': imfile, 'keyframe': False}
+            except ValueError:
+                pass
+            prevframes.extend(eventframes)
+            eventframes = prevframes
             shot = np.append(prevshot, shot, axis=0)
             idx = select_keyframe(shot)
-            currkf = frameidx[idx]
-            oldframes = []
+            currkf = eventframes[idx]
 
         kfs.append(currkf)
+        try:
+            imfile = framename(currkf)
+            idx = frames.index({'file': imfile, 'keyframe': False})
+            frames[idx] = {'file': imfile, 'keyframe': True}
+        except ValueError:
+            pass
         print('Added KF: {}'.format(currkf))
         prevshot = shot
-        previdx = frameidx
+        prevframes = eventframes
         shot = currfeatures
-        frameidx = [framenum]
+        eventframes = [framenum,]
         prevfeatures = currfeatures
         framenum += 1
         nextfile = nextframe(fnames, framenum)
 
-        oldframes = [f for f in oldframes if f not in kfs]
-        cleaner = threading.Thread(target=cleanup, args=(oldframes, fnames))
-        cleaner.start()
 
     ## Include last shot
     idx = select_keyframe(shot) 
-    currkf = frameidx[idx]
-    oldframes = previdx
-    oldframes.extend(frameidx)
+    currkf = eventframes[idx]
     if len(kfs) > 0:
         prevkf = kfs[-1]
-        filename = fnames.format(currkf)
-        currim = cv2.imread(filename, 1)
-        filename = fnames.format(prevkf)
-        previm = cv2.imread(filename, 1)
+        currim = cv2.imread(fnames.format(currkf), 1)
+        previm = cv2.imread(fnames.format(prevkf), 1)
         diff = framediff(currim, previm)
         if diff < THRESH:
             kfs.pop()
-            previdx.extend(frameidx)
-            frameidx = previdx
+            try:
+                imfile = framename(prevkf)
+                idx = frames.index({'file': imfile, 'keyframe': True})
+                frames[idx] = {'file': imfile, 'keyframe': False}
+            except ValueError:
+                pass
+            prevframes.extend(eventframes)
+            eventframes = prevframes
             shot = np.append(prevshot, shot, axis=0)
             idx = select_keyframe(shot)
-            currkf = frameidx[idx]
+            currkf = eventframes[idx]
     kfs.append(currkf)
-    oldframes = [f for f in oldframes if f not in kfs]
-    cleaner = threading.Thread(target=cleanup, args=(oldframes, fnames))
-    cleaner.start()
+    try:
+        imfile = framename(currkf)
+        idx = frames.index({'file': imfile, 'keyframe': False})
+        frames[idx] = {'file': imfile, 'keyframe': True}
+    except ValueError:
+        pass
 
     return kfs
 
