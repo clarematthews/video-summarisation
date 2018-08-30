@@ -8,8 +8,11 @@ import contextlib
 from rq import get_current_job
 
 BUFFER = 20
-MINSHOT = 5
-THRESH = 0.6
+MINSHOT = 2
+THRESH = 0.5
+FPS = 2
+VIDLENGTH = 15
+NFRAMES = FPS*VIDLENGTH
 WAIT = 2
 
 
@@ -59,8 +62,30 @@ def framediff(frame1, frame2):
     return sum(abs(hist1 - hist2))
 
 
+def dynamicthresh(base, numkf, budget, time, totaltime, dim):
+    expkf = budget*time/totaltime
+    if expkf == budget:
+        thresh =  (numkf >= budget)*dim
+    else:
+        thresh =  (base*(budget - numkf) + dim*(numkf - expkf))/(budget - expkf)
+    return thresh
 
-def run(path, fnames):
+
+def mostsimilarframe(similarities):
+    minidx = similarities.index(min(similarities))
+    presim = float('inf')
+    postsim = float('inf')
+    if minidx > 0:
+        presim = similarities[minidx - 1]
+    if minidx < len(similarities) - 1:
+        postsim = similarities[minidx + 1] 
+    if presim < postsim:
+        return minidx - 1
+    else:
+        return minidx
+
+
+def run(path, fnames, budget):
     job = get_current_job()
     while not os.listdir(path):
         print('Waiting for stream...')
@@ -74,7 +99,7 @@ def run(path, fnames):
     framenum = fstframe
     distcount = 0
     kfs = []
-    prevframes = []
+    adjkfsim = []
     nextfile = nextframe(fnames, framenum)
     sumdist = 0
     sumsq = 0
@@ -84,6 +109,7 @@ def run(path, fnames):
         job.meta['frames'] = frames
         job.save_meta()
         currfeatures = process(nextfile)
+        simdim = len(currfeatures)
         if framenum == fstframe:
             shot = currfeatures
             eventframes = [nextfile,] 
@@ -129,6 +155,7 @@ def run(path, fnames):
         currkf = eventframes[idx]
         if len(kfs) == 0:
             kfs.append(currkf)
+            adjkfsim.append(1)
             try:
                 imfile = framename(currkf)
                 idx = frames.index({'file': imfile, 'keyframe': False})
@@ -137,7 +164,6 @@ def run(path, fnames):
                 pass
             print('Added first KF: {}'.format(currkf))
             prevshot = shot
-            prevframes = eventframes
             shot = currfeatures
             eventframes = [framenum,]
             prevfeatures = currfeatures
@@ -145,35 +171,57 @@ def run(path, fnames):
             nextfile = nextframe(fnames, framenum)
             continue
 
+        print('Keyframes-------: {}'.format(kfs))
         prevkf = kfs[-1]
         currim = cv2.imread(fnames.format(currkf), 1)
         previm = cv2.imread(fnames.format(prevkf), 1)
         diff = framediff(currim, previm)
-        if diff < THRESH:
-            print('Removing KF: {}'.format(kfs[-1]))
-            kfs.pop()
-            try:
-                imfile = framename(prevkf)
-                idx = frames.index({'file': imfile, 'keyframe': True})
-                frames[idx] = {'file': imfile, 'keyframe': False}
-            except ValueError:
-                pass
-            prevframes.extend(eventframes)
-            eventframes = prevframes
-            shot = np.append(prevshot, shot, axis=0)
-            idx = select_keyframe(shot)
-            currkf = eventframes[idx]
+        currkfs = len(kfs)
+        if currkfs < budget:
+            dynthresh = dynamicthresh(THRESH, currkfs, budget, framenum,
+                    NFRAMES, simdim)
+            if diff >= dynthresh: 
+                kfs.append(currkf)
+                adjkfsim.append(diff)
+                try:
+                    imfile = framename(currkf)
+                    idx = frames.index({'file': imfile, 'keyframe': False})
+                    frames[idx] = {'file': imfile, 'keyframe': True}
+                except ValueError:
+                    pass
+                print('Added KF: {}'.format(currkf))
+        else:
+            minsim = min(adjkfsim)
+            if minsim <= diff:
+                kfs.append(currkf)
+                adjkfsim.append(diff)
+                try:
+                    imfile = framename(currkf)
+                    idx = frames.index({'file': imfile, 'keyframe': False})
+                    frames[idx] = {'file': imfile, 'keyframe': True}
+                except ValueError:
+                    pass
+                print('Added KF: {}'.format(currkf))
 
-        kfs.append(currkf)
-        try:
-            imfile = framename(currkf)
-            idx = frames.index({'file': imfile, 'keyframe': False})
-            frames[idx] = {'file': imfile, 'keyframe': True}
-        except ValueError:
-            pass
-        print('Added KF: {}'.format(currkf))
-        prevshot = shot
-        prevframes = eventframes
+                # Find frame to remove
+                replace = mostsimilarframe(adjkfsim)
+
+                # Update keyframe and similarity records
+                preadj = kfs[replace - 1]
+                postadj = kfs[replace + 1]
+                preim = cv2.imread(fnames.format(preadj), 1)
+                postim = cv2.imread(fnames.format(postadj), 1)
+                newdiff = framediff(preim, postim)
+                adjkfsim[replace + 1] = newdiff
+                adjkfsim.pop(replace)
+                replace = kfs.pop(replace)
+                try:
+                    imfile = framename(replace)
+                    idx = frames.index({'file': imfile, 'keyframe': True})
+                    frames[idx] = {'file': imfile, 'keyframe': False}
+                except ValueError:
+                    pass
+
         shot = currfeatures
         eventframes = [framenum,]
         prevfeatures = currfeatures
@@ -182,33 +230,52 @@ def run(path, fnames):
 
 
     ## Include last shot
-    idx = select_keyframe(shot) 
-    currkf = eventframes[idx]
-    if len(kfs) > 0:
-        prevkf = kfs[-1]
-        currim = cv2.imread(fnames.format(currkf), 1)
-        previm = cv2.imread(fnames.format(prevkf), 1)
-        diff = framediff(currim, previm)
-        if diff < THRESH:
-            kfs.pop()
-            try:
-                imfile = framename(prevkf)
-                idx = frames.index({'file': imfile, 'keyframe': True})
-                frames[idx] = {'file': imfile, 'keyframe': False}
-            except ValueError:
-                pass
-            prevframes.extend(eventframes)
-            eventframes = prevframes
-            shot = np.append(prevshot, shot, axis=0)
-            idx = select_keyframe(shot)
-            currkf = eventframes[idx]
-    kfs.append(currkf)
-    try:
-        imfile = framename(currkf)
-        idx = frames.index({'file': imfile, 'keyframe': False})
-        frames[idx] = {'file': imfile, 'keyframe': True}
-    except ValueError:
-        pass
+    if len(eventframes) >= MINSHOT:
+        idx = select_keyframe(shot)
+        currkf = eventframes[idx]
+        if len(kfs) > 0:
+            prevkf = kfs[-1]
+            currim = cv2.imread(fnames.format(currkf), 1)
+            previm = cv2.imread(fnames.format(prevkf), 1)
+            diff = framediff(currim, previm)
+            currkfs = len(kfs)
+            if currkfs < budget:
+                dynthresh = dynamicthresh(THRESH, currkfs, budget, NFRAMES,
+                        NFRAMES, simdim)
+                if diff >= dynthresh:
+                    kfs.append(currkf)
+                    try:
+                        imfile = framename(currkf)
+                        idx = frames.index({'file': imfile, 'keyframe': False})
+                        frames[idx] = {'file': imfile, 'keyframe': True}
+                    except ValueError:
+                        pass
+                    print('Added KF: {}'.format(currkf))
+            else:
+                minsim = min(adjkfsim)
+                if minsim <= diff:
+                    # Add new frame
+                    kfs.append(currkf)
+                    try:
+                        imfile = framename(currkf)
+                        idx = frames.index({'file': imfile, 'keyframe': False})
+                        frames[idx] = {'file': imfile, 'keyframe': True}
+                    except ValueError:
+                        pass
+                    print('Added KF: {}'.format(currkf))
+
+                    # Find frame to remove
+                    adjkfsim.append(diff)
+                    replace = mostsimilarframe(adjkfsim)
+
+                    # Remove existing keyframe
+                    replace = kfs.pop(replace)
+                    try:
+                        imfile = framename(replace)
+                        idx = frames.index({'file': imfile, 'keyframe': True})
+                        frames[idx] = {'file': imfile, 'keyframe': False}
+                    except ValueError:
+                        pass
 
     return kfs
 

@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, url_for
+import json
 from urllib.request import urlopen
 from multiprocessing.pool import ThreadPool
 import time
@@ -39,6 +40,8 @@ def clean_up():
 
 @app.route('/start', methods=['POST'])
 def start_stream():
+    data = json.loads(request.data)
+    budget = int(data['budget'])
     subprocess.Popen('rm -f {}img*.jpg'.format(FRAMES), shell=True).wait()
     subprocess.Popen('rm -f {}img*.png'.format(FRAMES), shell=True).wait()
     while os.listdir(FRAMES):
@@ -55,7 +58,7 @@ def start_stream():
             ' -vf fps=2 {}'.format(STREAM_ADDR, UDP_PORT, fname)
     subprocess.Popen(ffmpegstr, shell=True)
 
-    job = queue.enqueue('summarise.run', args=[FRAMES, template])
+    job = queue.enqueue('summarise.run', args=[FRAMES, template, budget])
     id = job.get_id()
 
     alivepool = ThreadPool(processes=1)
@@ -97,3 +100,9 @@ def get_status(id):
     return jsonify(status)
 
 
+@app.after_request
+def add_header(response):
+    response.cache_control.public = True
+    response.cache_control.max_age = 0
+    response.cache_control.no_cache = True
+    return response
