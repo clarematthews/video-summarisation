@@ -11,41 +11,31 @@
   margin-top: 16px;
 }
 
-.budget {
-  margin-bottom: 8px;
-  font-size: 16px;
-}
-
 .row {
-  padding-right: 20px;
-  padding-bottom: 8px;
+  margin-top: 16px;
+  width: 150px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.label {
-  display: inline-block;
-  float: left;
-  clear: left;
-  padding-right: 10px;
+.row:first-child {
+  margin-top: 0;
 }
 
-.value input {
+.value {
+  font-size: 16px;
   width: 40px;
-  height: 20px;
+  text-align: center;
+  padding: 10px 0;
   border: 2px solid grey;
   border-radius: 4px;
-  text-align: center;
-  font-size: 16px;
 }
 
-.value output {
-  width: 40px;
-  height: 20px;
-  border: 2px solid grey;
-  border-radius: 4px;
-  text-align: center;
-  font-size: 16px;
-  display: inline-block;
-  background-color: white;
+.value:read-only {
+  user-select: none;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .image {
@@ -76,6 +66,10 @@
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.actions {
+  margin-top: 16px;
 }
 
 .button {

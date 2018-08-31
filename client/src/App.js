@@ -75,36 +75,35 @@ class App extends Component {
         <div>
           <div className="budget">
             <div className="row">
-              <div className="label">
-                <label htmlFor="budget">Budget</label>
-              </div>
-              <div className="value">
-                <input
-                  type="text"
-                  value={this.state.budget}
-                  id="budget"
-                  onChange={evt => this.updateBudget(evt)}
-                />
-              </div>
+              <div className="label">Budget</div>
+              <input
+                type="text"
+                className="value"
+                value={this.state.budget}
+                onChange={evt => this.updateBudget(evt)}
+              />
             </div>
             <div className="row">
-              <div className="label">
-                <label htmlFor="remaining">Remaining</label>
-              </div>
-              <div className="value">
-                <output id="remaining">{this.state.remaining}</output>
-              </div>
+              <div className="label">Remaining</div>
+              <input
+                className="value"
+                type="text"
+                value={this.state.remaining}
+                readOnly
+              />
             </div>
           </div>
-          <button className="button" onClick={() => this.handleStart()}>
-            Start
-          </button>
-          <button className="button" onClick={() => this.handleStop()}>
-            Stop
-          </button>
-          <button className="button" onClick={() => this.handleReset()}>
-            Reset
-          </button>
+          <div className="actions">
+            <button className="button" onClick={() => this.handleStart()}>
+              Start
+            </button>
+            <button className="button" onClick={() => this.handleStop()}>
+              Stop
+            </button>
+            <button className="button" onClick={() => this.handleReset()}>
+              Reset
+            </button>
+          </div>
         </div>
         {showSpinner && (
           <div className="spinner">
