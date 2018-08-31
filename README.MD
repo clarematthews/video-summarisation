@@ -12,7 +12,3 @@
 - In the `client` directory run `npm install`
 - Connect to GoPro via wifi
 - Run `run.sh` script
-
-#### Troubleshooting
-
-- If missing, you may need to add an empty file `__init__.py` to the `cc_app` directory
