@@ -44,6 +44,7 @@ def start_stream():
     budget = int(data['budget'])
     subprocess.Popen('rm -f {}img*.jpg'.format(FRAMES), shell=True).wait()
     subprocess.Popen('rm -f {}img*.png'.format(FRAMES), shell=True).wait()
+    subprocess.Popen('rm -f {}.DS_Store'.format(FRAMES), shell=True).wait()
     while os.listdir(FRAMES):
         time.sleep(1)
     
