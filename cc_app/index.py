@@ -10,6 +10,8 @@ import subprocess
 import rq
 import cc_app.worker
 
+# Uses lots of clever stuff from github.com/KonradIT/GoProStream
+
 
 BASE = 'http://10.5.5.9'
 URL = '{}/gp/gpControl'.format(BASE)
